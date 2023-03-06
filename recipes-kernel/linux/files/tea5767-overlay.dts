@@ -1,0 +1,19 @@
+/dts-v1/;
+/plugin/;
+
+
+/ {
+        compatible = "brcm,bcm2711";
+
+        fragment@1 {
+                target = <&i2c1>;
+                __overlay__  {
+                        status = "okay";
+                        tea5767x@60 {
+                                compatible = "actia,tea5767";
+                                reg = <0x60>;
+                                status = "okay";
+                                };
+                };
+        };
+};
