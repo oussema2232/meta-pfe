@@ -66,20 +66,24 @@ static int tea5767_i2c_probe(struct i2c_client *client,
      printk("ERROR3\n");
     if (!client) {
     dev_err(&client->dev, "client is NULL\n");
-    printk("ERROR\n");
+    printk("ERROR4\n");
     return -EINVAL;
 }
 
 
     ret = v4l2_device_register(&client->dev, v4l2_dev);
+    printk("ERROR5\n");
     if (ret < 0) {
         v4l2_err(v4l2_dev, "could not register v4l2_device\n");
+        printk("ERROR6\n");
         printk("%d",ret);
         goto errfr;
     }
 
     hdl = &radio->ctrl_handler;
+    printk("ERROR7\n");
     v4l2_ctrl_handler_init(hdl, 1);
+    printk("ERROR8\n");
     v4l2_ctrl_new_std(hdl, &tea5767_ctrl_ops,
             V4L2_CID_AUDIO_MUTE, 0, 1, 1, 1);
     v4l2_dev->ctrl_handler = hdl;
