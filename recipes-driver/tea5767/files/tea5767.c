@@ -10,8 +10,68 @@
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-event.h>
 
-#define TEA5767_I2C_ADDRESS 0x60
-#define DRIVER_NAME "tea5767"
+#define DRIVER_VERSION	"0.0.2"
+
+#define DRIVER_AUTHOR	"Fabio Belavenuto <belavenuto@gmail.com>"
+#define DRIVER_DESC	"A driver for the tea5767 radio chip for EZX Phones."
+
+#define PINFO(format, ...)\
+	printk(KERN_INFO KBUILD_MODNAME ": "\
+		DRIVER_VERSION ": " format "\n", ## __VA_ARGS__)
+#define PWARN(format, ...)\
+	printk(KERN_WARNING KBUILD_MODNAME ": "\
+		DRIVER_VERSION ": " format "\n", ## __VA_ARGS__)
+# define PDEBUG(format, ...)\
+	printk(KERN_DEBUG KBUILD_MODNAME ": "\
+		DRIVER_VERSION ": " format "\n", ## __VA_ARGS__)
+
+/* Frequency limits in MHz -- these are European values.  For Japanese
+devices, that would be 76000 and 91000.  */
+#define FREQ_MIN  87500U
+#define FREQ_MAX 108000U
+#define FREQ_MUL 16
+
+/* tea5767 registers */
+#define tea5767_MANID		0xff
+#define tea5767_CHIPID		0xff
+
+#define tea5767_INTREG_BLMSK	0x0001
+#define tea5767_INTREG_FRRMSK	0x0002
+#define tea5767_INTREG_LEVMSK	0x0008
+#define tea5767_INTREG_IFMSK	0x0010
+#define tea5767_INTREG_BLMFLAG	0x0100
+#define tea5767_INTREG_FRRFLAG	0x0200
+#define tea5767_INTREG_LEVFLAG	0x0800
+#define tea5767_INTREG_IFFLAG	0x1000
+
+#define tea5767_FRQSET_SUD	0x8000
+#define tea5767_FRQSET_SM	0x4000
+
+#define tea5767_TNCTRL_PUPD1	0x8000
+#define tea5767_TNCTRL_PUPD0	0x4000
+#define tea5767_TNCTRL_BLIM	0x2000
+#define tea5767_TNCTRL_SWPM	0x1000
+#define tea5767_TNCTRL_IFCTC	0x0800
+#define tea5767_TNCTRL_AFM	0x0400
+#define tea5767_TNCTRL_SMUTE	0x0200
+#define tea5767_TNCTRL_SNC	0x0100
+#define tea5767_TNCTRL_MU	0x0080
+#define tea5767_TNCTRL_SSL1	0x0040
+#define tea5767_TNCTRL_SSL0	0x0020
+#define tea5767_TNCTRL_HLSI	0x0010
+#define tea5767_TNCTRL_MST	0x0008
+#define tea5767_TNCTRL_SWP	0x0004
+#define tea5767_TNCTRL_DTC	0x0002
+#define tea5767_TNCTRL_AHLSI	0x0001
+
+#define tea5767_TUNCHK_LEVEL(x)	(((x) & 0x00F0) >> 4)
+#define tea5767_TUNCHK_IFCNT(x) (((x) & 0xFE00) >> 9)
+#define tea5767_TUNCHK_TUNTO	0x0100
+#define tea5767_TUNCHK_LD	0x0008
+#define tea5767_TUNCHK_STEREO	0x0004
+
+#define tea5767_TESTREG_TRIGFR	0x0800
+
 struct tea5767_regs {
 	u16 intreg;				/* INTFLAG & INTMSK */
 	u16 frqset;				/* FRQSETMSB & FRQSETLSB */
@@ -46,19 +106,39 @@ struct tea5767_device {
 	struct mutex			mutex;
 };
 
+
 static const struct v4l2_ctrl_ops tea5767_ctrl_ops = {
     .s_ctrl = NULL,
 };
+static int tea5767_i2c_read(struct tea5767_device *radio)
+{
+	int i;
+	u16 *p = (u16 *) &radio->regs;
 
+	struct i2c_msg msgs[1] = {
+		{	.addr = radio->i2c_client->addr,
+			.flags = I2C_M_RD,
+			.len = sizeof(radio->regs),
+			.buf = (void *)&radio->regs
+		},
+	};
+	if (i2c_transfer(radio->i2c_client->adapter, msgs, 1) != 1)
+		return -EIO;
+	for (i = 0; i < sizeof(struct tea5767_regs) / sizeof(u16); i++)
+		p[i] = __be16_to_cpu((__force __be16)p[i]);
+
+	return 0;
+}
 static int tea5767_i2c_probe(struct i2c_client *client,
                              const struct i2c_device_id *id)
 {
     struct tea5767_device *radio;
     struct v4l2_device *v4l2_dev;
     struct v4l2_ctrl_handler *hdl;
+    struct tea5767_regs *r;
     int ret;
     printk("ERROR\n");
-    radio = kzalloc(sizeof(struct tea5767_device), GFP_KERNEL);
+    radio = kzalloc(sizeof(struct tea5767_device),GFP_KERNEL);
     if (!radio)
         return -ENOMEM;
      printk("ERROR2\n");
@@ -73,12 +153,16 @@ static int tea5767_i2c_probe(struct i2c_client *client,
 
     ret = v4l2_device_register(&client->dev, v4l2_dev);
     printk("ERROR5\n");
+    printk("%d\n",ret);
     if (ret < 0) {
         v4l2_err(v4l2_dev, "could not register v4l2_device\n");
         printk("ERROR6\n");
         printk("%d",ret);
         goto errfr;
     }
+    else {
+    printk(KERN_INFO "Successfully registered v4l2 device\n");
+}
 
     hdl = &radio->ctrl_handler;
     printk("ERROR7\n");
@@ -93,7 +177,17 @@ static int tea5767_i2c_probe(struct i2c_client *client,
         v4l2_err(v4l2_dev, "Could not register controls\n");
         goto errunreg;
     }
-
+    mutex_init(&radio->mutex);
+    radio->i2c_client = client;
+    ret = tea5767_i2c_read(radio);
+    if (ret)
+		goto errunreg;
+    i2c_set_clientdata(client, radio);
+    printk("ERROR8\n");
+    video_set_drvdata(&radio->vdev, radio);
+    radio->vdev.lock = &radio->mutex;
+    radio->vdev.v4l2_dev = v4l2_dev;
+    tea5767_i2c_read(radio);
     return 0;
 
 errunreg:
@@ -117,7 +211,7 @@ static const struct of_device_id tea5767_dt_ids[] = {
 MODULE_DEVICE_TABLE(of, tea5767_dt_ids);
 
 static const struct i2c_device_id tea5767_id_table[] = {
-    { "tea5767", 0,},
+    { .name = "tea5767"},
     { }
 };
 
@@ -134,23 +228,10 @@ static struct i2c_driver tea5767 = {
         .of_match_table = tea5767_dt_ids,
     },
 };
-
-static int __init ModuleInit(void) {
-	struct i2c_client *client;
-	printk("this is init1\n");
-	tea5767_i2c_probe(client, tea5767_id_table);
-	printk("this is init2\n");
-	return i2c_add_driver(&tea5767);
-	}
+module_i2c_driver(tea5767);
 
 
-static void __exit ModuleExit(void) {
-	printk("GoodBye Kernel\n");
-}
-
-module_init(ModuleInit);
-module_exit(ModuleExit);
 
 MODULE_AUTHOR("Your Name");
 MODULE_DESCRIPTION("Linux driver for the TEA5767 FM radio module");
-MODULE_LICENSE("GPL"); 
+MODULE_LICENSE("GPL");
