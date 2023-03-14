@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * driver/media/radio/radio-tea5767.c
  *
@@ -8,16 +9,6 @@
  * Based in radio-tea5761.c Copyright (C) 2005 Nokia Corporation
  *
  *  Copyright (c) 2008 Fabio Belavenuto <belavenuto@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  *
  * History:
  * 2008-12-06   Fabio Belavenuto <belavenuto@gmail.com>
@@ -287,12 +278,10 @@ static int vidioc_querycap(struct file *file, void  *priv,
 	struct tea5767_device *radio = video_drvdata(file);
 	struct video_device *dev = &radio->vdev;
 
-	strlcpy(v->driver, dev->dev.driver->name, sizeof(v->driver));
-	strlcpy(v->card, dev->name, sizeof(v->card));
+	strscpy(v->driver, dev->dev.driver->name, sizeof(v->driver));
+	strscpy(v->card, dev->name, sizeof(v->card));
 	snprintf(v->bus_info, sizeof(v->bus_info),
 		 "I2C:%s", dev_name(&dev->dev));
-	v->device_caps = V4L2_CAP_TUNER | V4L2_CAP_RADIO;
-	v->capabilities = v->device_caps | V4L2_CAP_DEVICE_CAPS;
 	return 0;
 }
 
@@ -305,7 +294,7 @@ static int vidioc_g_tuner(struct file *file, void *priv,
 	if (v->index > 0)
 		return -EINVAL;
 
-	strlcpy(v->name, "FM", sizeof(v->name));
+	strscpy(v->name, "FM", sizeof(v->name));
 	v->type = V4L2_TUNER_RADIO;
 	tea5767_i2c_read(radio);
 	v->rangelow   = FREQ_MIN * FREQ_MUL;
@@ -415,9 +404,9 @@ static const struct v4l2_ioctl_ops tea5767_ioctl_ops = {
 
 /* V4L2 interface */
 static const struct video_device tea5767_radio_template = {
-	.name		= "tea5767",
+	.name		= "tea5767 FM-Radio",
 	.fops           = &tea5767_fops,
-	.ioctl_ops 	= &tea5767_ioctl_ops,
+	.ioctl_ops	= &tea5767_ioctl_ops,
 	.release	= video_device_release_empty,
 };
 
@@ -432,50 +421,38 @@ static int tea5767_i2c_probe(struct i2c_client *client,
 	int ret;
 
 	PDEBUG("probe");
-	printk("PROBE1\n");
 	radio = kzalloc(sizeof(struct tea5767_device), GFP_KERNEL);
-	printk("PROBE2\n");
 	if (!radio)
 		return -ENOMEM;
 
 	v4l2_dev = &radio->v4l2_dev;
-	printk("PROBE3\n");
 	ret = v4l2_device_register(&client->dev, v4l2_dev);
-	printk("PROBE4\n");
 	if (ret < 0) {
 		v4l2_err(v4l2_dev, "could not register v4l2_device\n");
-		printk("PROBE5\n");
 		goto errfr;
 	}
-	printk("PROBE6\n");
+	int err;
+		
+
 	hdl = &radio->ctrl_handler;
-	printk("PROBE7\n");
 	v4l2_ctrl_handler_init(hdl, 1);
-	printk("PROBE8\n");
 	v4l2_ctrl_new_std(hdl, &tea5767_ctrl_ops,
 			V4L2_CID_AUDIO_MUTE, 0, 1, 1, 1);
-	printk("PROBE9\n");
 	v4l2_dev->ctrl_handler = hdl;
-	printk("PROBE10\n");
 	if (hdl->error) {
 		ret = hdl->error;
-		printk("PROBE11\n");
 		v4l2_err(v4l2_dev, "Could not register controls\n");
-		printk("PROBE12\n");
 		goto errunreg;
 	}
 
 	mutex_init(&radio->mutex);
-	printk("PROBE13\n");
 	radio->i2c_client = client;
-	printk("PROBE14\n");
 	ret = tea5767_i2c_read(radio);
-	printk("PROBE15\n");
-	if (ret){
-		printk("PROBE16\n");
+	if (ret)
 		goto errunreg;
-		}
 	r = &radio->regs;
+	PDEBUG("chipid = %04X, manid = %04X", r->chipid, r->manid);
+
 
 	radio->vdev = tea5767_radio_template;
 
@@ -483,6 +460,7 @@ static int tea5767_i2c_probe(struct i2c_client *client,
 	video_set_drvdata(&radio->vdev, radio);
 	radio->vdev.lock = &radio->mutex;
 	radio->vdev.v4l2_dev = v4l2_dev;
+	radio->vdev.device_caps = V4L2_CAP_TUNER | V4L2_CAP_RADIO;
 
 	/* initialize and power off the chip */
 	tea5767_i2c_read(radio);
@@ -490,6 +468,11 @@ static int tea5767_i2c_probe(struct i2c_client *client,
 	tea5767_mute(radio, 1);
 	tea5767_power_down(radio);
 
+	ret = video_register_device(&radio->vdev, VFL_TYPE_RADIO, radio_nr);
+	if (ret < 0) {
+		PWARN("Could not register video device!");
+		goto errunreg;
+	}
 
 	PINFO("registered.");
 	return 0;
@@ -515,23 +498,17 @@ static int tea5767_i2c_remove(struct i2c_client *client)
 	}
 	return 0;
 }
-static const struct of_device_id tea5767_dt_ids[] = {
-	{ .compatible = "actia,tea5767",},
-	{ }
-};
-MODULE_DEVICE_TABLE(of, tea5767_dt_ids);
 
 /* I2C subsystem interface */
 static const struct i2c_device_id tea5767_id[] = {
-	{ "tea5767", 0 },
+	{ "radio-tea5767", 0 },
 	{ }					/* Terminating entry */
 };
 MODULE_DEVICE_TABLE(i2c, tea5767_id);
 
 static struct i2c_driver tea5767_i2c_driver = {
 	.driver = {
-		.name = "tea5767",
-		.of_match_table = tea5767_dt_ids,
+		.name = "radio-tea5767",
 	},
 	.probe = tea5767_i2c_probe,
 	.remove = tea5767_i2c_remove,
