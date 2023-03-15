@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * driver/media/radio/radio-tea5767.c
  *
@@ -9,6 +8,16 @@
  * Based in radio-tea5761.c Copyright (C) 2005 Nokia Corporation
  *
  *  Copyright (c) 2008 Fabio Belavenuto <belavenuto@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
  * History:
  * 2008-12-06   Fabio Belavenuto <belavenuto@gmail.com>
@@ -278,10 +287,12 @@ static int vidioc_querycap(struct file *file, void  *priv,
 	struct tea5767_device *radio = video_drvdata(file);
 	struct video_device *dev = &radio->vdev;
 
-	strscpy(v->driver, dev->dev.driver->name, sizeof(v->driver));
-	strscpy(v->card, dev->name, sizeof(v->card));
+	strlcpy(v->driver, dev->dev.driver->name, sizeof(v->driver));
+	strlcpy(v->card, dev->name, sizeof(v->card));
 	snprintf(v->bus_info, sizeof(v->bus_info),
 		 "I2C:%s", dev_name(&dev->dev));
+	v->device_caps = V4L2_CAP_TUNER | V4L2_CAP_RADIO;
+	v->capabilities = v->device_caps | V4L2_CAP_DEVICE_CAPS;
 	return 0;
 }
 
@@ -294,7 +305,7 @@ static int vidioc_g_tuner(struct file *file, void *priv,
 	if (v->index > 0)
 		return -EINVAL;
 
-	strscpy(v->name, "FM", sizeof(v->name));
+	strlcpy(v->name, "FM", sizeof(v->name));
 	v->type = V4L2_TUNER_RADIO;
 	tea5767_i2c_read(radio);
 	v->rangelow   = FREQ_MIN * FREQ_MUL;
@@ -406,7 +417,7 @@ static const struct v4l2_ioctl_ops tea5767_ioctl_ops = {
 static const struct video_device tea5767_radio_template = {
 	.name		= "tea5767 FM-Radio",
 	.fops           = &tea5767_fops,
-	.ioctl_ops	= &tea5767_ioctl_ops,
+	.ioctl_ops 	= &tea5767_ioctl_ops,
 	.release	= video_device_release_empty,
 };
 
@@ -421,60 +432,71 @@ static int tea5767_i2c_probe(struct i2c_client *client,
 	int ret;
 
 	PDEBUG("probe");
-	radio = kzalloc(sizeof(struct tea5767_device), GFP_KERNEL);
+	radio = devm_kzalloc(&client->dev,sizeof(struct tea5767_device), GFP_KERNEL);
+	printk("DONE1\n");
 	if (!radio)
 		return -ENOMEM;
-
+	printk("DONE2\n");
 	v4l2_dev = &radio->v4l2_dev;
+	printk("DONE3\n");
 	ret = v4l2_device_register(&client->dev, v4l2_dev);
+	printk("DONE4\n");
 	if (ret < 0) {
 		v4l2_err(v4l2_dev, "could not register v4l2_device\n");
 		goto errfr;
 	}
-	int err;
-		
-
+	printk("DONE5\n");
 	hdl = &radio->ctrl_handler;
+	printk("DONE6\n");
 	v4l2_ctrl_handler_init(hdl, 1);
+	printk("DONE7\n");
 	v4l2_ctrl_new_std(hdl, &tea5767_ctrl_ops,
 			V4L2_CID_AUDIO_MUTE, 0, 1, 1, 1);
+	printk("DONE8\n");
 	v4l2_dev->ctrl_handler = hdl;
+	printk("DONE9\n");
 	if (hdl->error) {
 		ret = hdl->error;
 		v4l2_err(v4l2_dev, "Could not register controls\n");
 		goto errunreg;
 	}
-
+	printk("DONE10\n");
 	mutex_init(&radio->mutex);
+	printk("DONE11\n");
 	radio->i2c_client = client;
-	ret = tea5767_i2c_read(radio);
+	printk("DONE12\n");
 	if (ret)
 		goto errunreg;
+	printk("DONE14\n");
 	r = &radio->regs;
-	PDEBUG("chipid = %04X, manid = %04X", r->chipid, r->manid);
-
-
+	printk("DONE15\n");
 	radio->vdev = tea5767_radio_template;
-
+	printk("DONE16\n");
+	int a,b,c,d;
 	i2c_set_clientdata(client, radio);
-	video_set_drvdata(&radio->vdev, radio);
-	radio->vdev.lock = &radio->mutex;
+	printk("client = %d\n",client);
+	printk("radio = %d\n",radio);
+	printk("DONE17\n");
+	
+	printk("DONE18\n");
+	c=radio->vdev.lock = &radio->mutex;
+	printk("c = %d\n",c);
+	printk("DONE19\n");
 	radio->vdev.v4l2_dev = v4l2_dev;
-	radio->vdev.device_caps = V4L2_CAP_TUNER | V4L2_CAP_RADIO;
-
-	/* initialize and power off the chip */
-	tea5767_i2c_read(radio);
-	tea5767_set_audout_mode(radio, V4L2_TUNER_MODE_STEREO);
-	tea5767_mute(radio, 1);
-	tea5767_power_down(radio);
-
-	ret = video_register_device(&radio->vdev, VFL_TYPE_RADIO, radio_nr);
+	printk("v4l2_dev= %x\n",v4l2_dev);
+	printk("DONE20\n");
+	printk("&radio->vdev= %x\n",&radio->vdev);
+	video_set_drvdata(&radio->vdev, radio);
+	ret = video_register_device(&radio->vdev, VFL_TYPE_RADIO, -1);
+	printk("ret = %d\n",ret);
 	if (ret < 0) {
+		
 		PWARN("Could not register video device!");
 		goto errunreg;
 	}
-
+	printk("DONE\n");
 	PINFO("registered.");
+	printk("i2c_get_clientdata(client) = %x",i2c_get_clientdata(client));
 	return 0;
 errunreg:
 	v4l2_ctrl_handler_free(hdl);
