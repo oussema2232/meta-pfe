@@ -432,7 +432,7 @@ static int tea5767_i2c_probe(struct i2c_client *client,
 	int ret;
 
 	PDEBUG("probe");
-	radio = devm_kzalloc(&client->dev,sizeof(struct tea5767_device), GFP_KERNEL);
+	radio = kzalloc(sizeof(struct tea5767_device), GFP_KERNEL);
 	printk("DONE1\n");
 	if (!radio)
 		return -ENOMEM;
@@ -477,17 +477,17 @@ static int tea5767_i2c_probe(struct i2c_client *client,
 	printk("client = %d\n",client);
 	printk("radio = %d\n",radio);
 	printk("DONE17\n");
-	
+	struct video_device *vdev = video_device_alloc();
+	vdev->release = video_device_release;
 	printk("DONE18\n");
-	c=radio->vdev.lock = &radio->mutex;
-	printk("c = %d\n",c);
+	vdev->lock = &radio->mutex;
 	printk("DONE19\n");
-	radio->vdev.v4l2_dev = v4l2_dev;
+	vdev->v4l2_dev = v4l2_dev;
 	printk("v4l2_dev= %x\n",v4l2_dev);
 	printk("DONE20\n");
 	printk("&radio->vdev= %x\n",&radio->vdev);
-	video_set_drvdata(&radio->vdev, radio);
-	ret = video_register_device(&radio->vdev, VFL_TYPE_RADIO, -1);
+	video_set_drvdata(vdev, radio);
+	ret = video_register_device(vdev, VFL_TYPE_RADIO, -1);
 	printk("ret = %d\n",ret);
 	if (ret < 0) {
 		
