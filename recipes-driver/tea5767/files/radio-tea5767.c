@@ -1,32 +1,3 @@
-/*
- * driver/media/radio/radio-tea5767.c
- *
- * Driver for tea5767 radio chip for linux 2.6.
- * This driver is for tea5767 chip from NXP, used in EZX phones from Motorola.
- * The I2C protocol is used for communicate with chip.
- *
- * Based in radio-tea5761.c Copyright (C) 2005 Nokia Corporation
- *
- *  Copyright (c) 2008 Fabio Belavenuto <belavenuto@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * History:
- * 2008-12-06   Fabio Belavenuto <belavenuto@gmail.com>
- *              initial code
- *
- * TODO:
- *  add platform_data support for IRQs platform dependencies
- *  add RDS support
- */
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/module.h>
@@ -38,12 +9,9 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-event.h>
-
 #define DRIVER_VERSION	"0.0.2"
-
-#define DRIVER_AUTHOR	"Fabio Belavenuto <belavenuto@gmail.com>"
-#define DRIVER_DESC	"A driver for the tea5767 radio chip for EZX Phones."
-
+#define DRIVER_AUTHOR	"Koubaa"
+#define DRIVER_DESC	"A driver for the tea5767 radio chip"
 #define PINFO(format, ...)\
 	printk(KERN_INFO KBUILD_MODNAME ": "\
 		DRIVER_VERSION ": " format "\n", ## __VA_ARGS__)
@@ -53,17 +21,14 @@
 # define PDEBUG(format, ...)\
 	printk(KERN_DEBUG KBUILD_MODNAME ": "\
 		DRIVER_VERSION ": " format "\n", ## __VA_ARGS__)
-
 /* Frequency limits in MHz -- these are European values.  For Japanese
 devices, that would be 76000 and 91000.  */
 #define FREQ_MIN  87500U
 #define FREQ_MAX 108000U
 #define FREQ_MUL 16
-
 /* tea5767 registers */
 #define tea5767_MANID		0x002b
 #define tea5767_CHIPID		0x5764
-
 #define tea5767_INTREG_BLMSK	0x0001
 #define tea5767_INTREG_FRRMSK	0x0002
 #define tea5767_INTREG_LEVMSK	0x0008
@@ -72,10 +37,8 @@ devices, that would be 76000 and 91000.  */
 #define tea5767_INTREG_FRRFLAG	0x0200
 #define tea5767_INTREG_LEVFLAG	0x0800
 #define tea5767_INTREG_IFFLAG	0x1000
-
 #define tea5767_FRQSET_SUD	0x8000
 #define tea5767_FRQSET_SM	0x4000
-
 #define tea5767_TNCTRL_PUPD1	0x8000
 #define tea5767_TNCTRL_PUPD0	0x4000
 #define tea5767_TNCTRL_BLIM	0x2000
@@ -92,15 +55,12 @@ devices, that would be 76000 and 91000.  */
 #define tea5767_TNCTRL_SWP	0x0004
 #define tea5767_TNCTRL_DTC	0x0002
 #define tea5767_TNCTRL_AHLSI	0x0001
-
 #define tea5767_TUNCHK_LEVEL(x)	(((x) & 0x00F0) >> 4)
 #define tea5767_TUNCHK_IFCNT(x) (((x) & 0xFE00) >> 9)
 #define tea5767_TUNCHK_TUNTO	0x0100
 #define tea5767_TUNCHK_LD	0x0008
 #define tea5767_TUNCHK_STEREO	0x0004
-
 #define tea5767_TESTREG_TRIGFR	0x0800
-
 struct tea5767_regs {
 	u16 intreg;				/* INTFLAG & INTMSK */
 	u16 frqset;				/* FRQSETMSB & FRQSETLSB */
@@ -117,7 +77,6 @@ struct tea5767_regs {
 	u16 manid;				/* MANID1 & MANID2 */
 	u16 chipid;				/* CHIPID1 & CHIPID2 */
 } __attribute__ ((packed));
-
 struct tea5767_write_regs {
 	u8 intreg;				/* INTMSK */
 	__be16 frqset;				/* FRQSETMSB & FRQSETLSB */
@@ -126,16 +85,13 @@ struct tea5767_write_regs {
 	__be16 rdsctrl;				/* RDSCTRL1 & RDSCTRL2 */
 	__be16 rdsbbl;				/* PAUSEDET & RDSBBL */
 } __attribute__ ((packed));
-
 #ifdef CONFIG_RADIO_tea5767_XTAL
 #define RADIO_tea5767_XTAL 1
 #else
 #define RADIO_tea5767_XTAL 0
 #endif
-
 static int radio_nr = -1;
 static int use_xtal = RADIO_tea5767_XTAL;
-
 struct tea5767_device {
 	struct v4l2_device		v4l2_dev;
 	struct v4l2_ctrl_handler	ctrl_handler;
@@ -144,13 +100,11 @@ struct tea5767_device {
 	struct tea5767_regs		regs;
 	struct mutex			mutex;
 };
-
 /* I2C code related */
 static int tea5767_i2c_read(struct tea5767_device *radio)
 {
 	int i;
 	u16 *p = (u16 *) &radio->regs;
-
 	struct i2c_msg msgs[1] = {
 		{	.addr = radio->i2c_client->addr,
 			.flags = I2C_M_RD,
@@ -162,10 +116,8 @@ static int tea5767_i2c_read(struct tea5767_device *radio)
 		return -EIO;
 	for (i = 0; i < sizeof(struct tea5767_regs) / sizeof(u16); i++)
 		p[i] = __be16_to_cpu((__force __be16)p[i]);
-
 	return 0;
 }
-
 static int tea5767_i2c_write(struct tea5767_device *radio)
 {
 	struct tea5767_write_regs wr;
@@ -187,11 +139,9 @@ static int tea5767_i2c_write(struct tea5767_device *radio)
 		return -EIO;
 	return 0;
 }
-
 static void tea5767_power_up(struct tea5767_device *radio)
 {
 	struct tea5767_regs *r = &radio->regs;
-
 	if (!(r->tnctrl & tea5767_TNCTRL_PUPD0)) {
 		r->tnctrl &= ~(tea5767_TNCTRL_AFM | tea5767_TNCTRL_MU |
 			       tea5767_TNCTRL_HLSI);
@@ -199,43 +149,35 @@ static void tea5767_power_up(struct tea5767_device *radio)
 			r->testreg |= tea5767_TESTREG_TRIGFR;
 		else
 			r->testreg &= ~tea5767_TESTREG_TRIGFR;
-
 		r->tnctrl |= tea5767_TNCTRL_PUPD0;
 		tea5767_i2c_write(radio);
 	}
 }
-
 static void tea5767_power_down(struct tea5767_device *radio)
 {
 	struct tea5767_regs *r = &radio->regs;
-
 	if (r->tnctrl & tea5767_TNCTRL_PUPD0) {
 		r->tnctrl &= ~tea5767_TNCTRL_PUPD0;
 		tea5767_i2c_write(radio);
 	}
 }
-
 static void tea5767_set_freq(struct tea5767_device *radio, int freq)
 {
 	struct tea5767_regs *r = &radio->regs;
-
 	/* formula: (freq [+ or -] 225000) / 8192 */
 	if (r->tnctrl & tea5767_TNCTRL_HLSI)
 		r->frqset = (freq + 225000) / 8192;
 	else
 		r->frqset = (freq - 225000) / 8192;
 }
-
 static int tea5767_get_freq(struct tea5767_device *radio)
 {
 	struct tea5767_regs *r = &radio->regs;
-
 	if (r->tnctrl & tea5767_TNCTRL_HLSI)
 		return (r->frqchk * 8192) - 225000;
 	else
 		return (r->frqchk * 8192) + 225000;
 }
-
 /* tune an frequency, freq is defined by v4l's TUNER_LOW, i.e. 1/16th kHz */
 static void tea5767_tune(struct tea5767_device *radio, int freq)
 {
@@ -243,12 +185,10 @@ static void tea5767_tune(struct tea5767_device *radio, int freq)
 	if (tea5767_i2c_write(radio))
 		PWARN("Could not set frequency!");
 }
-
 static void tea5767_set_audout_mode(struct tea5767_device *radio, int audmode)
 {
 	struct tea5767_regs *r = &radio->regs;
 	int tnctrl = r->tnctrl;
-
 	if (audmode == V4L2_TUNER_MODE_MONO)
 		r->tnctrl |= tea5767_TNCTRL_MST;
 	else
@@ -256,22 +196,18 @@ static void tea5767_set_audout_mode(struct tea5767_device *radio, int audmode)
 	if (tnctrl != r->tnctrl)
 		tea5767_i2c_write(radio);
 }
-
 static int tea5767_get_audout_mode(struct tea5767_device *radio)
 {
 	struct tea5767_regs *r = &radio->regs;
-
 	if (r->tnctrl & tea5767_TNCTRL_MST)
 		return V4L2_TUNER_MODE_MONO;
 	else
 		return V4L2_TUNER_MODE_STEREO;
 }
-
 static void tea5767_mute(struct tea5767_device *radio, int on)
 {
 	struct tea5767_regs *r = &radio->regs;
 	int tnctrl = r->tnctrl;
-
 	if (on)
 		r->tnctrl |= tea5767_TNCTRL_MU;
 	else
@@ -279,14 +215,12 @@ static void tea5767_mute(struct tea5767_device *radio, int on)
 	if (tnctrl != r->tnctrl)
 		tea5767_i2c_write(radio);
 }
-
 /* V4L2 vidioc */
 static int vidioc_querycap(struct file *file, void  *priv,
 					struct v4l2_capability *v)
 {
 	struct tea5767_device *radio = video_drvdata(file);
 	struct video_device *dev = &radio->vdev;
-
 	strlcpy(v->driver, dev->dev.driver->name, sizeof(v->driver));
 	strlcpy(v->card, dev->name, sizeof(v->card));
 	snprintf(v->bus_info, sizeof(v->bus_info),
@@ -295,16 +229,13 @@ static int vidioc_querycap(struct file *file, void  *priv,
 	v->capabilities = v->device_caps | V4L2_CAP_DEVICE_CAPS;
 	return 0;
 }
-
 static int vidioc_g_tuner(struct file *file, void *priv,
 				struct v4l2_tuner *v)
 {
 	struct tea5767_device *radio = video_drvdata(file);
 	struct tea5767_regs *r = &radio->regs;
-
 	if (v->index > 0)
 		return -EINVAL;
-
 	strlcpy(v->name, "FM", sizeof(v->name));
 	v->type = V4L2_TUNER_RADIO;
 	tea5767_i2c_read(radio);
@@ -318,28 +249,22 @@ static int vidioc_g_tuner(struct file *file, void *priv,
 	v->audmode = tea5767_get_audout_mode(radio);
 	v->signal = tea5767_TUNCHK_LEVEL(r->tunchk) * 0xffff / 0xf;
 	v->afc = tea5767_TUNCHK_IFCNT(r->tunchk);
-
 	return 0;
 }
-
 static int vidioc_s_tuner(struct file *file, void *priv,
 				const struct v4l2_tuner *v)
 {
 	struct tea5767_device *radio = video_drvdata(file);
-
 	if (v->index > 0)
 		return -EINVAL;
-
 	tea5767_set_audout_mode(radio, v->audmode);
 	return 0;
 }
-
 static int vidioc_s_frequency(struct file *file, void *priv,
 				const struct v4l2_frequency *f)
 {
 	struct tea5767_device *radio = video_drvdata(file);
 	unsigned freq = f->frequency;
-
 	if (f->tuner != 0 || f->type != V4L2_TUNER_RADIO)
 		return -EINVAL;
 	if (freq == 0) {
@@ -357,13 +282,11 @@ static int vidioc_s_frequency(struct file *file, void *priv,
 	tea5767_tune(radio, (freq * 125) / 2);
 	return 0;
 }
-
 static int vidioc_g_frequency(struct file *file, void *priv,
 				struct v4l2_frequency *f)
 {
 	struct tea5767_device *radio = video_drvdata(file);
 	struct tea5767_regs *r = &radio->regs;
-
 	if (f->tuner != 0)
 		return -EINVAL;
 	tea5767_i2c_read(radio);
@@ -372,15 +295,12 @@ static int vidioc_g_frequency(struct file *file, void *priv,
 		f->frequency = (tea5767_get_freq(radio) * 2) / 125;
 	else
 		f->frequency = 0;
-
 	return 0;
 }
-
 static int tea5767_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct tea5767_device *radio =
 		container_of(ctrl->handler, struct tea5767_device, ctrl_handler);
-
 	switch (ctrl->id) {
 	case V4L2_CID_AUDIO_MUTE:
 		tea5767_mute(radio, ctrl->val);
@@ -388,20 +308,17 @@ static int tea5767_s_ctrl(struct v4l2_ctrl *ctrl)
 	}
 	return -EINVAL;
 }
-
 static const struct v4l2_ctrl_ops tea5767_ctrl_ops = {
 	.s_ctrl = tea5767_s_ctrl,
 };
-
 /* File system interface */
 static const struct v4l2_file_operations tea5767_fops = {
 	.owner		= THIS_MODULE,
 	.open		= v4l2_fh_open,
 	.release	= v4l2_fh_release,
 	.poll		= v4l2_ctrl_poll,
-	.unlocked_ioctl	= video_ioctl2,
+	.unlocked_ioctl = video_ioctl2,
 };
-
 static const struct v4l2_ioctl_ops tea5767_ioctl_ops = {
 	.vidioc_querycap    = vidioc_querycap,
 	.vidioc_g_tuner     = vidioc_g_tuner,
@@ -412,15 +329,13 @@ static const struct v4l2_ioctl_ops tea5767_ioctl_ops = {
 	.vidioc_subscribe_event = v4l2_ctrl_subscribe_event,
 	.vidioc_unsubscribe_event = v4l2_event_unsubscribe,
 };
-
 /* V4L2 interface */
-static const struct video_device tea5767_radio_template = {
+static struct video_device tea5767_radio_template = {
 	.name		= "tea5767 FM-Radio",
 	.fops           = &tea5767_fops,
 	.ioctl_ops 	= &tea5767_ioctl_ops,
 	.release	= video_device_release_empty,
 };
-
 /* I2C probe: check if the device exists and register with v4l if it is */
 static int tea5767_i2c_probe(struct i2c_client *client,
 			     const struct i2c_device_id *id)
@@ -430,73 +345,44 @@ static int tea5767_i2c_probe(struct i2c_client *client,
 	struct v4l2_ctrl_handler *hdl;
 	struct tea5767_regs *r;
 	int ret;
-
 	PDEBUG("probe");
 	radio = kzalloc(sizeof(struct tea5767_device), GFP_KERNEL);
-	printk("DONE1\n");
 	if (!radio)
 		return -ENOMEM;
-	printk("DONE2\n");
 	v4l2_dev = &radio->v4l2_dev;
-	printk("DONE3\n");
 	ret = v4l2_device_register(&client->dev, v4l2_dev);
-	printk("DONE4\n");
 	if (ret < 0) {
 		v4l2_err(v4l2_dev, "could not register v4l2_device\n");
 		goto errfr;
 	}
-	printk("DONE5\n");
 	hdl = &radio->ctrl_handler;
-	printk("DONE6\n");
 	v4l2_ctrl_handler_init(hdl, 1);
-	printk("DONE7\n");
 	v4l2_ctrl_new_std(hdl, &tea5767_ctrl_ops,
 			V4L2_CID_AUDIO_MUTE, 0, 1, 1, 1);
-	printk("DONE8\n");
 	v4l2_dev->ctrl_handler = hdl;
-	printk("DONE9\n");
 	if (hdl->error) {
 		ret = hdl->error;
 		v4l2_err(v4l2_dev, "Could not register controls\n");
 		goto errunreg;
 	}
-	printk("DONE10\n");
 	mutex_init(&radio->mutex);
-	printk("DONE11\n");
 	radio->i2c_client = client;
-	printk("DONE12\n");
+	ret = tea5767_i2c_read(radio);
 	if (ret)
 		goto errunreg;
-	printk("DONE14\n");
 	r = &radio->regs;
-	printk("DONE15\n");
 	radio->vdev = tea5767_radio_template;
-	printk("DONE16\n");
-	int a,b,c,d;
 	i2c_set_clientdata(client, radio);
-	printk("client = %d\n",client);
-	printk("radio = %d\n",radio);
-	printk("DONE17\n");
-	struct video_device *vdev = video_device_alloc();
-	vdev->release = video_device_release;
-	printk("DONE18\n");
-	vdev->lock = &radio->mutex;
-	printk("DONE19\n");
-	vdev->v4l2_dev = v4l2_dev;
-	printk("v4l2_dev= %x\n",v4l2_dev);
-	printk("DONE20\n");
-	printk("&radio->vdev= %x\n",&radio->vdev);
-	video_set_drvdata(vdev, radio);
-	ret = video_register_device(vdev, VFL_TYPE_RADIO, -1);
-	printk("ret = %d\n",ret);
+	video_set_drvdata(&radio->vdev, radio);
+	radio->vdev.lock = &radio->mutex;
+	radio->vdev.v4l2_dev = v4l2_dev;
+	printk("Done\n");
+	ret = video_register_device(&radio->vdev, VFL_TYPE_RADIO, radio_nr);
 	if (ret < 0) {
-		
 		PWARN("Could not register video device!");
 		goto errunreg;
 	}
-	printk("DONE\n");
 	PINFO("registered.");
-	printk("i2c_get_clientdata(client) = %x",i2c_get_clientdata(client));
 	return 0;
 errunreg:
 	v4l2_ctrl_handler_free(hdl);
@@ -505,11 +391,9 @@ errfr:
 	kfree(radio);
 	return ret;
 }
-
 static int tea5767_i2c_remove(struct i2c_client *client)
 {
 	struct tea5767_device *radio = i2c_get_clientdata(client);
-
 	PDEBUG("remove");
 	if (radio) {
 		tea5767_power_down(radio);
@@ -520,30 +404,32 @@ static int tea5767_i2c_remove(struct i2c_client *client)
 	}
 	return 0;
 }
-
+static const struct of_device_id tea5767_of[] = {
+    {.compatible = "actia,radio-tea5767",},
+    { /*sentinel*/ },
+};
+MODULE_DEVICE_TABLE(of,tea5767_of);
 /* I2C subsystem interface */
 static const struct i2c_device_id tea5767_id[] = {
 	{ "radio-tea5767", 0 },
 	{ }					/* Terminating entry */
 };
 MODULE_DEVICE_TABLE(i2c, tea5767_id);
-
 static struct i2c_driver tea5767_i2c_driver = {
 	.driver = {
+		.owner = THIS_MODULE,
 		.name = "radio-tea5767",
+		.of_match_table = of_match_ptr(tea5767_of),
 	},
 	.probe = tea5767_i2c_probe,
 	.remove = tea5767_i2c_remove,
 	.id_table = tea5767_id,
 };
-
 module_i2c_driver(tea5767_i2c_driver);
-
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRIVER_VERSION);
-
 module_param(use_xtal, int, 0);
 MODULE_PARM_DESC(use_xtal, "Chip have a xtal connected in board");
 module_param(radio_nr, int, 0);
