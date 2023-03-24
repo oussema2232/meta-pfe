@@ -1,18 +1,6 @@
-SUMMARY = "Example of how to build an external Linux kernel module"
-DESCRIPTION = "${SUMMARY}"
-LICENSE = "GPL-2.0-only"
-LIC_FILES_CHKSUM = "file://COPYING;md5=12f884d2ae1ff87c09e5b7ccc2c4ca7e"
+FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+SRC_URI += "file://radiotea5767-overlay.dts;subdir=git/arch/arm/boot/dts/overlays \
+            "
 
-inherit module
+KERNEL_DEVICETREE:append = " overlays/radiotea5767.dtbo"
 
-SRC_URI = "file://Makefile \
-           file://tea5767.c \
-           file://COPYING \
-          "
-
-S = "${WORKDIR}"
-
-# The inherit of module.bbclass will automatically name module packages with
-# "kernel-module-" prefix as required by the oe-core build environment.
-
-RPROVIDES:${PN} += "kernel-module-tea5767"
